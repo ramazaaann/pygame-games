@@ -1,0 +1,62 @@
+[
+    {
+        "name": "Roma",
+        "score": 58,
+        "coins": 9,
+        "distance": 13
+    },
+    {
+        "name": "Roma",
+        "score": 44,
+        "coins": 6,
+        "distance": 14
+    },
+    {
+        "name": "Roma",
+        "score": 43,
+        "coins": 5,
+        "distance": 18
+    },
+    {
+        "name": "Roma",
+        "score": 42,
+        "coins": 7,
+        "distance": 7
+    },
+    {
+        "name": "Roma",
+        "score": 42,
+        "coins": 7,
+        "distance": 7
+    },
+    {
+        "name": "Roma",
+        "score": 30,
+        "coins": 4,
+        "distance": 10
+    },
+    {
+        "name": "vargas",
+        "score": 24,
+        "coins": 3,
+        "distance": 9
+    },
+    {
+        "name": "vargas",
+        "score": 19,
+        "coins": 3,
+        "distance": 4
+    },
+    {
+        "name": "Roma",
+        "score": 15,
+        "coins": 2,
+        "distance": 5
+    },
+    {
+        "name": "Roma",
+        "score": 3,
+        "coins": 0,
+        "distance": 3
+    }
+]

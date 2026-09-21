@@ -1,0 +1,20 @@
+WIDTH = 600
+HEIGHT = 600
+CELL = 30
+FPS = 10
+
+DB_NAME = "snake_db"
+DB_USER = "postgres"
+DB_PASSWORD = "12345678"
+DB_HOST = "localhost"
+DB_PORT = "5433"
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (180, 180, 180)
+GREEN = (0, 200, 0)
+RED = (220, 0, 0)
+BLUE = (0, 100, 255)
+YELLOW = (255, 220, 0)
+PURPLE = (160, 0, 200)
+DARK_RED = (120, 0, 0)
