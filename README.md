@@ -1,6 +1,6 @@
-# Pygame Mini Games
+# Pygame Games
 
-A collection of four small Python projects, mixing simple pygame games with a database-backed phonebook app.
+A collection of four small Python projects, mixing pygame games with a database-backed phonebook app.
 
 ## Projects Included
 
@@ -11,10 +11,10 @@ Classic snake game — eat food to grow longer while avoiding the walls and your
 A fast-paced racing game — dodge oncoming obstacles and survive as long as you can without crashing. Includes a leaderboard to track high scores.
 
 ### Paint
-A simple drawing app — pick a tool and draw on the screen with your mouse.
+A drawing app — pick a tool and draw on the screen with your mouse.
 
 ### Phonebook
-A simple contact manager backed by a database — add, view, and manage contacts with their name, email, birthday, group, and phone number.
+A contact manager backed by a database — add, view, and manage contacts with their name, email, birthday, group, and phone number.
 
 ## Requirements
 
