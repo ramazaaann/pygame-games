@@ -53,4 +53,4 @@ pygame-mini-games/
 
 ## Author
 
-Made by Ramazan — a set of small projects to practice Pygame and database integration.
+Made by Ramazan — a set of projects to practice Pygame and database integration.
