@@ -13,8 +13,6 @@ A fast-paced racing game — dodge oncoming obstacles and survive as long as you
 ### Paint
 A drawing app — pick a tool and draw on the screen with your mouse.
 
-### Phonebook
-A contact manager backed by a database — add, view, and manage contacts with their name, email, birthday, group, and phone number.
 
 ## Requirements
 
@@ -49,7 +47,6 @@ pygame-mini-games/
 ├── Snake/
 ├── Racer/
 ├── Paint/
-└── phonebook/
 
 ## Author
 
