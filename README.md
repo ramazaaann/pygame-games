@@ -1,18 +1,14 @@
 # Pygame Games
 
-A collection of four small Python projects, mixing pygame games with a database-backed phonebook app.
+A collection of small Python projects, mixing pygame games with a database-backed phonebook app.
 
 ## Projects Included
 
-### Snake
-Classic snake game — eat food to grow longer while avoiding the walls and your own tail.
-
-### Racer
-A fast-paced racing game — dodge oncoming obstacles and survive as long as you can without crashing. Includes a leaderboard to track high scores.
-
-### Paint
-A drawing app — pick a tool and draw on the screen with your mouse.
-
+- **Snake**: Classic snake game — eat food to grow longer while avoiding the walls and your own tail.
+- **Racer**: Single-player fast-paced racing game — dodge oncoming obstacles and survive as long as you can without crashing. Includes a leaderboard to track high scores.
+- **Racer_2 (NEW)**: Local 2-Player Arcade Edition (Ferrari vs Porsche) — dual controls on a single screen (P1: W/A/D, P2: Arrows/Up), straight road, power-ups, coins, and local SQLite leaderboard support.
+- **Paint**: A drawing app — pick a tool and draw on the screen with your mouse.
+- **phonebook**: A Python application connected to a database for managing contact records.
 
 ## Requirements
 
@@ -20,33 +16,42 @@ A drawing app — pick a tool and draw on the screen with your mouse.
 - Pygame
 - psycopg2-binary (for the phonebook's database connection)
 
-Install dependencies:
+### Install dependencies
 
-pip install pygame psycopg2-binary
+    pip install pygame psycopg2-binary
 
 ## How to Run
 
 Clone the repository:
 
-git clone https://github.com/ramazaaann/pygame-mini-games.git
-cd pygame-mini-games
+    git clone https://github.com/ramazaaann/pygame-games.git
+    cd pygame-games
 
 Then run whichever project you want:
 
-python Snake/main.py
+    # Run Snake
+    python Snake/main.py
 
-python Racer/main.py
+    # Run Classic Racer
+    python Racer/main.py
 
-python Paint/paint.py
+    # Run NEW Racer_2 (2-Player Mode)
+    python Racer_2/client.py
 
-python phonebook/phonebook.py
+    # Run Paint
+    python Paint/paint.py
+
+    # Run Phonebook App
+    python phonebook/phonebook.py
 
 ## Project Structure
 
-pygame-mini-games/
-├── Snake/
-├── Racer/
-├── Paint/
+    pygame-games/
+    ├── Snake/
+    ├── Racer/
+    ├── Racer_2/
+    ├── Paint/
+    └── phonebook/
 
 ## Author
 
