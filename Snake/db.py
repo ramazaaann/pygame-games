@@ -1,115 +1,117 @@
-import psycopg2
-from config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+"""PostgreSQL storage: connection pool, one transaction per saved game.
+The game keeps working (without saving) if the database is unavailable."""
+import logging
+from contextlib import contextmanager
+
+try:
+    import psycopg2
+    from psycopg2 import pool
+except ImportError:
+    psycopg2 = None
+
+from config import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
+
+log = logging.getLogger("snake.db")
+_pool = None
 
 
-def connect():
-    return psycopg2.connect(
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT
-    )
+def init():
+    """Open the pool and create tables. Returns True when the database is usable."""
+    global _pool
+    if psycopg2 is None:
+        log.warning("psycopg2 is not installed - scores will not be saved")
+        return False
+    try:
+        _pool = pool.ThreadedConnectionPool(
+            1, 5, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT)
+        _create_tables()
+        return True
+    except Exception as exc:
+        log.warning("PostgreSQL unavailable (%s) - scores will not be saved", exc)
+        _pool = None
+        return False
 
 
-def create_tables():
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL
-        );
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS game_sessions (
-            id SERIAL PRIMARY KEY,
-            player_id INTEGER REFERENCES players(id),
-            score INTEGER NOT NULL,
-            level_reached INTEGER NOT NULL,
-            played_at TIMESTAMP DEFAULT NOW()
-        );
-    """)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-def get_or_create_player(username):
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM players WHERE username = %s", (username,))
-    player = cur.fetchone()
-
-    if player:
-        player_id = player[0]
-    else:
-        cur.execute(
-            "INSERT INTO players (username) VALUES (%s) RETURNING id",
-            (username,)
-        )
-        player_id = cur.fetchone()[0]
+@contextmanager
+def _cursor():
+    conn = _pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            yield cur
         conn.commit()
-
-    cur.close()
-    conn.close()
-    return player_id
-
-
-def save_result(username, score, level):
-    player_id = get_or_create_player(username)
-
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT INTO game_sessions (player_id, score, level_reached)
-        VALUES (%s, %s, %s)
-    """, (player_id, score, level))
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _pool.putconn(conn)
 
 
-def get_leaderboard():
-    conn = connect()
-    cur = conn.cursor()
+def _create_tables():
+    with _cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS players (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                id SERIAL PRIMARY KEY,
+                player_id INTEGER NOT NULL REFERENCES players(id),
+                score INTEGER NOT NULL,
+                level_reached INTEGER NOT NULL,
+                played_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(10) NOT NULL DEFAULT 'solo';
+            ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS won BOOLEAN;
+            CREATE INDEX IF NOT EXISTS idx_sessions_score ON game_sessions (score DESC);
+            CREATE INDEX IF NOT EXISTS idx_sessions_player ON game_sessions (player_id);
+        """)
 
-    cur.execute("""
-        SELECT players.username, game_sessions.score, game_sessions.level_reached
-        FROM game_sessions
-        JOIN players ON players.id = game_sessions.player_id
-        ORDER BY game_sessions.score DESC
-        LIMIT 10
-    """)
 
-    data = cur.fetchall()
-    cur.close()
-    conn.close()
-    return data
+def save_result(username, score, level, mode="solo", won=None):
+    """Upsert the player and insert the session in a single transaction."""
+    if _pool is None:
+        return
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                """INSERT INTO players (username) VALUES (%s)
+                   ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username
+                   RETURNING id""", (username,))
+            player_id = cur.fetchone()[0]
+            cur.execute(
+                """INSERT INTO game_sessions (player_id, score, level_reached, mode, won)
+                   VALUES (%s, %s, %s, %s, %s)""", (player_id, score, level, mode, won))
+    except Exception as exc:
+        log.error("Could not save result: %s", exc)
+
+
+def get_leaderboard(limit=10):
+    """Top scores as (username, score, level, mode) rows."""
+    if _pool is None:
+        return []
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                """SELECT p.username, s.score, s.level_reached, s.mode
+                   FROM game_sessions s JOIN players p ON p.id = s.player_id
+                   ORDER BY s.score DESC, s.played_at ASC
+                   LIMIT %s""", (limit,))
+            return cur.fetchall()
+    except Exception as exc:
+        log.error("Could not load leaderboard: %s", exc)
+        return []
 
 
 def get_personal_best(username):
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT MAX(game_sessions.score)
-        FROM game_sessions
-        JOIN players ON players.id = game_sessions.player_id
-        WHERE players.username = %s
-    """, (username,))
-
-    result = cur.fetchone()[0]
-
-    cur.close()
-    conn.close()
-
-    if result is None:
+    if _pool is None:
         return 0
-    return result
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                """SELECT COALESCE(MAX(s.score), 0)
+                   FROM game_sessions s JOIN players p ON p.id = s.player_id
+                   WHERE p.username = %s""", (username,))
+            return cur.fetchone()[0]
+    except Exception as exc:
+        log.error("Could not load personal best: %s", exc)
+        return 0

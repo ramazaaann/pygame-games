@@ -4,6 +4,7 @@ A top-down arcade racing game for two players over the network, built with Pytho
 Dodge traffic and obstacles, collect coins and power-ups, and outscore your opponent.
 Results are stored in SQLite and shown in a built-in leaderboard.
 
+<!-- Add a screenshot or GIF here: ![Gameplay](docs/screenshot.png) -->
 
 ## Features
 

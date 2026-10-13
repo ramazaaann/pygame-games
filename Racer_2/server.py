@@ -142,9 +142,17 @@ class GameServer:
 
     # ---- game loop -----------------------------------------------------
     def game_loop(self):
+        """Fixed-rate loop: ticks are scheduled against a monotonic clock so the
+        rate stays at TICK_RATE Hz instead of drifting by the work done per tick."""
         prev = time.time()
+        next_tick = time.monotonic()
         while True:
-            time.sleep(TICK)
+            next_tick += TICK
+            delay = next_tick - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                next_tick = time.monotonic()  # fell behind: resync instead of spiralling
             now = time.time()
             dt, prev = min(now - prev, 0.1), now
             with self.lock:
