@@ -1,4 +1,3 @@
-import math
 import random
 from protocol import (ROAD_X, ROAD_W, CAR_W, CAR_H, PLAYER_Y, MAX_LIVES)
 
@@ -123,14 +122,12 @@ class World:
             self.players[slot]["alive"] = False
 
     def finished(self):
-        alive = [p for p in self.players.values() if p["alive"]]
-        return len(alive) == 0
+        return not any(p["alive"] for p in self.players.values())
 
     def snapshot(self):
         return {
             "t": "state",
             "ws": round(self.world_speed),
-            "curve": 0.0,
             "e": [[e["k"], int(e["x"]), int(e["y"]), e["w"], e["h"], e["v"], round(self.world_speed * e["m"])]
                   for e in self.entities],
             "p": [{"s": s, "n": p["name"], "x": int(p["x"]), "l": p["lives"], "sc": self.score(p),

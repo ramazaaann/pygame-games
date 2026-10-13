@@ -1,12 +1,17 @@
-import sqlite3
 import logging
+import sqlite3
+from contextlib import closing
 
 log = logging.getLogger("racer.db")
 DB_NAME = "racer.db"
 
 
+def _connect():
+    return closing(sqlite3.connect(DB_NAME))
+
+
 def init():
-    with sqlite3.connect(DB_NAME) as conn:
+    with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS matches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,30 +34,36 @@ def init():
 
 
 def save_match(results, duration, winner):
+    """winner is None when the scores are tied."""
     try:
-        with sqlite3.connect(DB_NAME) as conn:
+        with _connect() as conn:
             cur = conn.cursor()
             cur.execute("INSERT INTO matches (duration, winner) VALUES (?, ?)", (duration, winner))
             match_id = cur.lastrowid
             for r in results:
                 cur.execute(
                     "INSERT INTO scores (match_id, name, score, coins, distance) VALUES (?, ?, ?, ?, ?)",
-                    (match_id, r["name"], r["score"], r["coins"], r["distance"])
+                    (match_id, r["name"], r["score"], r["coins"], r["distance"]),
                 )
             conn.commit()
-    except Exception as e:
-        log.error(f"Failed to save match to DB: {e}")
+    except sqlite3.Error as exc:
+        log.error("Failed to save match: %s", exc)
 
 
-def top():
+def top(limit=10):
+    """Best score, number of wins and games played per player name."""
     try:
-        with sqlite3.connect(DB_NAME) as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT name, MAX(score) as best, SUM(CASE WHEN name = ? THEN 1 ELSE 0 END) as wins, COUNT(*) as games
-                FROM scores GROUP BY name ORDER BY best DESC LIMIT 10
-            """, ("",))
-            rows = cur.fetchall()
-            return [{"name": r[0], "best": r[1], "wins": r[2], "games": r[3]} for r in rows]
-    except Exception:
+        with _connect() as conn:
+            rows = conn.execute("""
+                SELECT s.name,
+                       MAX(s.score) AS best,
+                       (SELECT COUNT(*) FROM matches m WHERE m.winner = s.name) AS wins,
+                       COUNT(*) AS games
+                FROM scores s
+                GROUP BY s.name
+                ORDER BY best DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        return [{"name": n, "best": b, "wins": w, "games": g} for n, b, w, g in rows]
+    except sqlite3.Error:
         return []

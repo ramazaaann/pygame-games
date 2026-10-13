@@ -1,113 +1,208 @@
+"""Racer online server.  Usage: python3 server.py [port]
+
+The server owns the game state (authoritative). Clients only send key presses
+and render the snapshots they receive.
+"""
+import logging
 import socket
+import sys
 import threading
 import time
-from protocol import PORT, encode, decode
-from simulation import World
+
 import db
+from protocol import PORT, TICK_RATE, encode, decode
+from simulation import World
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("racer.server")
+
+TICK = 1.0 / TICK_RATE
+MAX_PLAYERS = 2
+COUNTDOWN = 3
+
+
+class Client:
+    def __init__(self, sock, addr):
+        self.sock, self.addr = sock, addr
+        self.slot = None
+        self.name = None
+        self.ready = False
+        self.controls = {"l": False, "r": False, "turbo": False}
+        self._send_lock = threading.Lock()
+
+    def send(self, msg):
+        try:
+            with self._send_lock:
+                self.sock.sendall(encode(msg))
+        except OSError:
+            pass  # the reader thread notices the dead socket and drops the client
+
 
 class GameServer:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.client_sock = None
-        self.names = {0: "Ferrari", 1: "Porsche"}
+    def __init__(self, port):
+        self.lock = threading.RLock()
+        self.clients = {}        # slot -> Client
+        self.state = "lobby"     # lobby | countdown | running | over
         self.world = None
-        self.mode = "lobby"
+        self.countdown_start = 0.0
+        self.last_count = None
+        self.started_at = 0.0
 
-    def handle_client(self, sock, addr):
-        self.client_sock = sock
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(("0.0.0.0", port))
+        self.sock.listen()
+        log.info("Listening on port %s", port)
+
+    # ---- connections ---------------------------------------------------
+    def accept_loop(self):
+        threading.Thread(target=self.game_loop, daemon=True).start()
+        while True:
+            sock, addr = self.sock.accept()
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(5)
+            c = Client(sock, addr)
+            with self.lock:
+                free = [s for s in range(MAX_PLAYERS) if s not in self.clients]
+                if not free or self.state in ("countdown", "running"):
+                    c.send({"t": "error", "msg": "Server is full or a race is in progress"})
+                    sock.close()
+                    continue
+                c.slot = free[0]
+                self.clients[c.slot] = c
+            log.info("%s connected as slot %s", addr, c.slot)
+            c.send({"t": "welcome", "id": c.slot})
+            threading.Thread(target=self.serve_client, args=(c,), daemon=True).start()
+
+    def serve_client(self, c):
+        buf = b""
         try:
             while True:
-                data = sock.recv(4096)
+                try:
+                    data = c.sock.recv(4096)
+                except socket.timeout:
+                    continue
                 if not data:
                     break
-                for line in data.split(b"\n"):
-                    if not line:
+                buf += data
+                if len(buf) > 65536:
+                    break
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        self.on_message(c, decode(line))
+                    except (ValueError, AttributeError):
                         continue
-                    msg = decode(line + b"\n")
-                    kind = msg.get("t")
-
-                    with self.lock:
-                        if kind == "join":
-                            self.names[0] = msg.get("p1_name", "Ferrari")
-                            self.names[1] = msg.get("p2_name", "Porsche")
-                            sock.sendall(encode({"t": "lobby", "status": "ready"}))
-
-                        elif kind == "start":
-                            if self.mode == "lobby":
-                                self.start_game()
-
-                        elif kind == "input":
-                            if self.mode == "race" and self.world:
-                                self.current_inputs = {
-                                    0: {"l": msg.get("p1_l", False), "r": msg.get("p1_r", False), "turbo": msg.get("p1_t", False)},
-                                    1: {"l": msg.get("p2_l", False), "r": msg.get("p2_r", False), "turbo": msg.get("p2_t", False)}
-                                }
-        except Exception:
+        except OSError:
             pass
         finally:
-            sock.close()
-            self.mode = "over"
+            self.drop(c)
 
-    def start_game(self):
-        self.world = World(self.names)
-        self.current_inputs = {}
-        self.mode = "countdown"
-        threading.Thread(target=self.run_game_loop, daemon=True).start()
+    def drop(self, c):
+        with self.lock:
+            if self.clients.get(c.slot) is not c:
+                return
+            del self.clients[c.slot]
+            try:
+                c.sock.close()
+            except OSError:
+                pass
+            log.info("%s (%s) left", c.addr, c.name)
+            if self.state == "running" and self.world:
+                self.world.kill(c.slot)
+            elif self.state == "countdown":
+                self.state = "lobby"
+                for other in self.clients.values():
+                    other.ready = False
+            self.broadcast_lobby()
 
-    def run_game_loop(self):
-        for i in range(3, 0, -1):
-            if self.client_sock:
-                try:
-                    self.client_sock.sendall(encode({"t": "countdown", "n": i}))
-                except:
-                    pass
-            time.sleep(1.0)
-        
-        self.mode = "race"
-        last_time = time.time()
-        
-        while self.mode == "race":
+    def on_message(self, c, msg):
+        kind = msg.get("t")
+        with self.lock:
+            if kind == "join":
+                c.name = str(msg.get("name", "")).strip()[:15] or ("Ferrari" if c.slot == 0 else "Porsche")
+                c.send({"t": "top", "top": db.top()})
+                self.broadcast_lobby()
+            elif kind == "ready" and self.state in ("lobby", "over") and c.name:
+                c.ready = True
+                self.broadcast_lobby()
+            elif kind == "input":
+                c.controls = {"l": bool(msg.get("l")), "r": bool(msg.get("r")),
+                              "turbo": bool(msg.get("turbo"))}
+
+    # ---- broadcasting --------------------------------------------------
+    def broadcast(self, msg):
+        for c in list(self.clients.values()):
+            c.send(msg)
+
+    def broadcast_lobby(self):
+        players = [{"s": s, "n": c.name or "...", "r": int(c.ready)}
+                   for s, c in sorted(self.clients.items())]
+        self.broadcast({"t": "lobby", "players": players})
+
+    # ---- game loop -----------------------------------------------------
+    def game_loop(self):
+        prev = time.time()
+        while True:
+            time.sleep(TICK)
             now = time.time()
-            dt = now - last_time
-            last_time = now
-            if dt < 0.005:
-                time.sleep(0.005 - dt)
-                continue
-            dt = min(dt, 0.1)
-
+            dt, prev = min(now - prev, 0.1), now
             with self.lock:
-                inputs = getattr(self, "current_inputs", {})
-                self.world.step(dt, inputs)
-                snapshot = self.world.snapshot()
-                if self.client_sock:
-                    try:
-                        self.client_sock.sendall(encode(snapshot))
-                    except:
-                        break
+                if self.state in ("lobby", "over"):
+                    if self.clients and all(c.ready for c in self.clients.values()):
+                        self.state = "countdown"
+                        self.countdown_start = now
+                        self.last_count = None
+                elif self.state == "countdown":
+                    n = COUNTDOWN - int(now - self.countdown_start)
+                    if n != self.last_count:
+                        self.last_count = n
+                        self.broadcast({"t": "countdown", "n": max(n, 0)})
+                    if n <= 0:
+                        self.start_race(now)
+                elif self.state == "running":
+                    self.tick(dt)
 
-                if self.world.finished():
-                    self.mode = "over"
-                    results = self.world.results()
-                    winner = max(results, key=lambda x: x["score"])["name"] if results else None
-                    db.save_match(results, self.world.t, winner)
-                    if self.client_sock:
-                        try:
-                            self.client_sock.sendall(encode({"t": "over", "results": results, "winner": winner}))
-                        except:
-                            pass
-                    break
+    def start_race(self, now):
+        names = {s: c.name for s, c in self.clients.items()}
+        self.world = World(names)
+        self.started_at = now
+        self.state = "running"
+        log.info("Race started: %s", list(names.values()))
 
-def main():
-    db.init()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("0.0.0.0", PORT))
-    s.listen(1)
-    server = GameServer()
-    while True:
-        sock, addr = s.accept()
-        threading.Thread(target=server.handle_client, args=(sock, addr), daemon=True).start()
+    def tick(self, dt):
+        if not self.clients:
+            self.state = "lobby"
+            return
+        inputs = {s: c.controls for s, c in self.clients.items()}
+        self.world.step(dt, inputs)
+        self.broadcast(self.world.snapshot())
+        if self.world.finished():
+            self.finish_race()
+
+    def finish_race(self):
+        self.state = "over"
+        results = self.world.results()
+        duration = self.world.t
+        for c in self.clients.values():
+            c.ready = False
+        winner = None
+        if len(results) > 1:
+            best = max(results, key=lambda r: r["score"])
+            if sum(r["score"] == best["score"] for r in results) == 1:
+                winner = best["name"]
+        log.info("Race over: %s winner=%s", results, winner)
+        threading.Thread(target=self.save_and_announce,
+                         args=(results, duration, winner), daemon=True).start()
+
+    def save_and_announce(self, results, duration, winner):
+        db.save_match(results, duration, winner)
+        top = db.top()
+        with self.lock:
+            self.broadcast({"t": "over", "results": results, "winner": winner, "top": top})
+
 
 if __name__ == "__main__":
-    main()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
+    db.init()
+    GameServer(port).accept_loop()
