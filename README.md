@@ -1,73 +1,71 @@
 # Pygame Games
 
-A collection of Python projects, mixing pygame games with a database-backed phonebook app.
+A collection of Python projects: pygame games with PostgreSQL / SQLite storage, a networked multiplayer racer, and a database-backed phonebook app.
 
-## Projects Included
+## Projects
 
-- **Snake**: Snake game with level progression, procedural walls, poison and power-ups. Eat food to grow, avoid walls and your own tail. Results and a top-10 leaderboard are stored in PostgreSQL.
-- **Racer**: Single-player fast-paced racing game — dodge oncoming obstacles and survive as long as you can without crashing. Includes a leaderboard to track high scores.
-- **Racer_2 (NEW)**: Online 2-Player Racer (Ferrari vs Porsche) — each player runs their own client and connects to a TCP socket server. The server simulates the race (authoritative), with lobby, countdown, rematch, power-ups (nitro, shield, repair, oil), coins, and a SQLite leaderboard. See [Racer_2/README.md](Racer_2/README.md) for details.
-- **Paint**: A drawing app — pick a tool and draw on the screen with your mouse.
-- **phonebook**: A Python application connected to a database for managing contact records.
+| Project | What it is |
+|---|---|
+| [**Racer_2**](Racer_2) | Online 2-player racer (Ferrari vs Porsche). Each player runs a pygame client and connects to a multithreaded TCP server that runs the race simulation. SQLite leaderboard. |
+| [**Snake**](Snake) | Snake with levels, walls, poison and power-ups, a **BFS-driven AI opponent**, unit-tested game logic and a PostgreSQL leaderboard. |
+| **Racer** | Single-player racing game: dodge obstacles and survive as long as you can. JSON leaderboard. |
+| **Paint** | Drawing app: pick a tool and draw with the mouse. |
+| **phonebook** | Python application connected to a PostgreSQL database for managing contacts. |
 
 ## Requirements
 
 - Python 3.9+
-- Pygame
-- psycopg2-binary (for Snake and phonebook, which use PostgreSQL)
-- A running PostgreSQL server for Snake and phonebook (Racer, Racer_2 and Paint need no database setup)
+- `pygame`
+- `psycopg2-binary` and a running PostgreSQL server (only for **Snake**'s leaderboard and **phonebook**; Snake still runs without a database)
 
-### Install dependencies
+```bash
+pip install pygame psycopg2-binary
+```
 
-    pip install pygame psycopg2-binary
+## Run
 
-## How to Run
+```bash
+git clone https://github.com/ramazaaann/pygame-games.git
+cd pygame-games
+```
 
-Clone the repository:
+```bash
+# Snake (see Snake/README.md for database setup and tests)
+cd Snake && python3 main.py
 
-    git clone https://github.com/ramazaaann/pygame-games.git
-    cd pygame-games
+# Classic Racer
+cd Racer && python3 main.py
 
-Then run whichever project you want:
+# Paint
+cd Paint && python3 paint.py
 
-    # Run Snake
-    python Snake/main.py
-
-    # Run Classic Racer
-    python Racer/main.py
-
-    # Run Paint
-    python Paint/paint.py
-
-    # Run Phonebook App
-    python phonebook/phonebook.py
+# Phonebook
+cd phonebook && python3 phonebook.py
+```
 
 ### Racer_2 (online multiplayer)
 
-Open three terminals in the `Racer_2` folder (`cd Racer_2`):
+Open three terminals in `Racer_2`:
 
-    # Terminal 1 - server
-    python3 server.py
+```bash
+python3 server.py                          # terminal 1: server
+python3 client.py localhost Ferrari        # terminal 2: player 1
+python3 client.py localhost Porsche        # terminal 3: player 2
+```
 
-    # Terminal 2 - player 1
-    python3 client.py localhost Ferrari
+Press `SPACE` in the lobby when both players are ready. To play from two computers, run the server on one of them and start the other client with the server's IP address instead of `localhost` (TCP port 5005). Details: [Racer_2/README.md](Racer_2/README.md).
 
-    # Terminal 3 - player 2
-    python3 client.py localhost Porsche
+## Structure
 
-Press `SPACE` in the lobby when both players are ready. To play from two computers on the same Wi-Fi, run the server on one of them and start the clients with the server's IP address instead of `localhost`.
-
-Controls: `A`/`D` or `←`/`→` to steer, `W` or `↑` for turbo.
-
-## Project Structure
-
-    pygame-games/
-    ├── Snake/
-    ├── Racer/
-    ├── Racer_2/        # online 2-player racer (server.py + client.py)
-    ├── Paint/
-    └── phonebook/
+```
+pygame-games/
+├── Racer_2/     # online 2-player racer (server.py + client.py)
+├── Snake/       # snake with AI opponent, tests, PostgreSQL
+├── Racer/
+├── Paint/
+└── phonebook/
+```
 
 ## Author
 
-Made by Ramazan — projects to practice Pygame, networking and database integration.
+Made by Ramazan Serikbay — projects for practising Python, networking, algorithms and databases.
